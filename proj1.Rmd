@@ -1,0 +1,553 @@
+---
+title: "ECON 187: Project 1"
+author: "Austin Pham (905318112), Shannan Liu (305172952), Christina Zhang(605325840), Zachary Wrubel (205102460)"
+output: pdf_document
+
+---
+
+For this project you will need to use two different datasets of your choice. One will be used for classification and the other for regularization. For the classification dataset make sure you have more than two classes. For your regularization dataset, since the methods focus on variable selection, please make sure to have as many predictors as possible (e.g., 10s or 100s).
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(GGally)
+library(nnet)
+library(caret)
+library(factoextra)
+library(ClusterR)
+library(cluster)
+library(ggplot2)
+
+```
+
+# Classification
+
+```{r message=FALSE, warning=FALSE}
+body <- read_csv("bodyPerformance.csv")
+body <- body %>% mutate(gender = factor(ifelse(gender == "M", 1, 0)))
+sum(is.na(body))
+head(body)
+```
+Below are the graphs that shows the possible correlation between all the predictors with Class A,B,C,and D. From the grpahs, we can see that all the correlations are significant, so we will be using all the predictors for classification analysis.
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+plot1 <- body %>% ggpairs(columns = c(1:4,12), ggplot2::aes(col = class, fill = class))
+plot2 <- body %>% ggpairs(columns = c(5:8,12), ggplot2::aes(col = class, fill = class))
+plot3 <- body %>% ggpairs(columns = c(9:12), ggplot2::aes(col = class, fill = class))
+plot1
+plot2
+plot2
+```
+
+## Logistic Regression
+
+```{r}
+set.seed(42)
+fit.control.cv <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+fit.control.boot <-  trainControl(method = "boot")
+mn.fit.cv <- train(class ~ ., data = body, method = "multinom",
+                   trControl = fit.control.cv, trace = FALSE,
+                   preProcess = c("center", "scale"))
+mn.fit.boot <- train(class ~ ., data = body, method = "multinom",
+                     trControl = fit.control.boot, trace = FALSE,
+                     preProcess = c("center", "scale"))
+```
+
+```{r}
+mn.fit.cv$finalModel
+mn.fit.boot$finalModel
+confusionMatrix(mn.fit.cv)
+confusionMatrix(mn.fit.boot)
+mn.fit.cv$results
+mn.fit.boot$results
+```
+The logistic regression method shows an overall accuracy of 0.6177.
+
+## LDA
+
+```{r}
+lda.fit.cv <- train(class ~ ., data = body, method = "lda",
+                    trControl = fit.control.cv, trace = FALSE,
+                    preProcess = c("center", "scale"))
+lda.fit.boot <- train(class ~ ., data = body, method = "lda",
+                      trControl = fit.control.boot, trace = FALSE,
+                      preProcess = c("center", "scale"))
+```
+
+```{r}
+lda.fit.cv$finalModel
+lda.fit.boot$finalModel
+confusionMatrix(lda.fit.cv)
+confusionMatrix(lda.fit.boot)
+lda.fit.cv$results
+lda.fit.boot$results
+```
+LDA shows an overall accuracy of 0.6126.
+
+## QDA
+
+```{r}
+qda.fit.cv <- train(class ~ ., data = body, method = "qda",
+                    trControl = fit.control.cv, trace = FALSE,
+                    preProcess = c("center", "scale"))
+qda.fit.boot <- train(class ~ ., data = body, method = "qda",
+                      trControl = fit.control.boot, trace = FALSE,
+                      preProcess = c("center", "scale"))
+```
+
+```{r}
+qda.fit.cv$finalModel
+qda.fit.boot$finalModel
+confusionMatrix(qda.fit.cv)
+confusionMatrix(qda.fit.boot)
+qda.fit.cv$results
+qda.fit.boot$results
+```
+
+
+QDA shows an overall accuracy of 0.6549.
+
+## kNN
+
+```{r}
+knn.fit.cv <- train(class ~ ., data = body, method = "knn",
+                    trControl = fit.control.cv, preProcess = c("center", "scale"))
+knn.fit.boot <- train(class ~ ., data = body, method = "knn",
+                      trControl = fit.control.boot, preProcess = c("center", "scale"))
+```
+
+```{r}
+knn.fit.cv$finalModel
+knn.fit.boot$finalModel
+confusionMatrix(knn.fit.cv)
+confusionMatrix(knn.fit.boot)
+knn.fit.cv$results
+knn.fit.boot$results
+```
+KNN yields an accuracy of 0.5849.
+
+## k-Means
+
+```{r}
+
+#k means
+
+bp_ <- body[,c(-2,-12)]
+bp_ <- na.omit(bp_)
+bp_ <-scale(bp_)
+
+```
+
+
+```{r}
+
+#create the function that runs the k-mean algorithm and get the clusters sum of squares
+
+kmean_withinss <- function(k) {
+    cluster <- kmeans(bp_, k)
+    return (cluster$tot.withinss)
+}
+
+maxk <-10
+re <- sapply(2:maxk, kmean_withinss)
+
+re. <-data.frame(2:maxk, re) #create a data frame to store all values
+
+ggplot(re., aes(x = X2.maxk, y = re)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1, 10, by = 1))
+```
+From the graph, we can see the optimal k is 6, where the curve starts to diminish the return.
+
+```{r}
+set.seed(240) # Setting seed
+kmeans.re <- kmeans(bp_, centers=6, nstart = 20)
+
+# Confusion Matrix
+table(body$class, kmeans.re$cluster)
+
+body_kmeans <- cbind(body, cluster = kmeans.re$cluster)
+head(body_kmeans)
+
+kmeans.re$centers #matrix of cluster centers
+kmeans.re$size #number of points in each clusters
+
+```
+The cluster centers shows that cluster 5 have the highest body fat % and age average among all clusters, and cluster 3 has the highest average weight among all.
+
+```{r}
+
+fviz_cluster(kmeans.re, data = bp_)
+
+```
+The plot displays that each group have similar dimensions but there are still some overlaps.
+
+```{r}
+fviz_cluster(kmeans(bp_, centers=4, nstart = 20), data = bp_)
+
+```
+Clusters of 4 might work better in this case. Now we can see that all the clusters are more separated form each other.
+
+Based on my fits, a non-linear is more appropriate since the accuracy generated from QDA has the highest accuracy, though the accuracy are pretty close to each other in all classification methods. 
+
+
+# Regularization
+For this portion of the project, we're going to use a data set containing information on the Australian housing market and apply regularization techniques to make predictions on house prices. The data set will have 81 columns of data. 
+
+*Overall procedure*
+Numeric pipeline:
+- We will impute missing values with medians 
+- After that, we will standardize each vector of data to ensure each feature is given equal weighting by our models
+
+Categorical pipeline:
+- In each vector of data, we will fill missing values with the most commonly observed sample
+- After that, we will transform each vector to numeric representation using label encoding or by making them dummy variables, where appropriate
+
+Afterwards, we will fit the Principal Component, LASSO, Ridge, and Elastic Net models to our data and see which produces the best fit. 
+
+For the LASSO, Ridge, and Elastic Net regressions, we have first remove multicollinearity before applying them. To address this issue, we will examine each variable's variance inflation factor. As a rule of thumb, a VIF > 5 implies that the variable is a potential cause of collinearity, so we will remove it from our dataset.
+
+```{r}
+rm(list = ls())
+# importing data
+df = read.csv('house_data.csv')
+cat("Number of variables:",length(df))
+head(df) # check
+
+# convert ID column into row names
+# and drop it
+rownames(df) <- df$Id
+drops <- c('Id')
+df <- df[ , !(names(df) %in% drops)]
+
+# check length of our data
+cat("Length of data:",length(df$MSSubClass))
+
+# check if our target variable has any missing values
+cat("Missing values in our target var:",sum(is.na(df$SalePrice)))
+
+# great, now we can train-test-split
+set.seed(42)
+train_index = createDataPartition(df$SalePrice, p = .7, list = FALSE)
+train <- df[train_index,]
+test  <- df[-train_index,]
+
+# drop columns with high number of NA values
+# define "high" as >20% null values
+drops <- c()
+
+# find the columns with a high number of NAs
+for (col in names(train)){
+  if (sum(is.na(df[col])) > 0.2*nrow(df[col])){
+    drops <- c(drops,col)
+  }
+}
+# drop those columns from our data
+train <- train[ , !(names(train) %in% drops)]
+test <- test[ , !(names(test) %in% drops)]
+
+# find if there are any variables that don't 
+# give any information i.e. 0 variance
+# this would be the case if a column only 
+# has 1 unique value
+cat("In the training set these variables have 0 variance:",names(sapply(lapply(train, unique), length)[sapply(lapply(train, unique), length) == 1]),"\n")
+
+cat("In the test set these variables have 0 variance:",names(sapply(lapply(test, unique), length)[sapply(lapply(test, unique), length) == 1]),
+    '\n')
+
+# we will drop the utilities variable
+drops <- c('Utilities')
+train<- train[ , !(names(train) %in% drops)]
+test <- test[ , !(names(test) %in% drops)]
+
+# split into train-test sets
+drops <- c('SalePrice')
+X_train <-train[ , !(names(train) %in% drops)]
+y_train <- train$SalePrice
+X_test <- test[ , !(names(test) %in% drops)]
+y_test <- test$SalePrice
+```
+
+## Pipeline
+```{r}
+# handling numeric data
+# (1) impute > median
+# (2) scale 
+X_train_scaled <- X_train %>% mutate_if(is.numeric,function(x) ifelse(is.na(x),median(x,na.rm=T),x)) %>% mutate_if(is.numeric, function(x) scale(x))
+
+X_test_scaled <- X_test %>% mutate_if(is.numeric,function(x) ifelse(is.na(x),median(x,na.rm=T),x)) %>% mutate_if(is.numeric, function(x) scale(x))
+
+# handling categorical data
+# (1) impute with mode
+X_train_scaled <- X_train_scaled %>% mutate_if(is.character,function(x) ifelse(is.na(x),mode(x),x))
+X_test_scaled <- X_test_scaled %>% mutate_if(is.character,function(x) ifelse(is.na(x),mode(x),x))
+
+# (2) encode data
+X_train_scaled <- X_train_scaled %>% mutate_if(is.character,function(x) as.integer(factor(x)))
+X_test_scaled <- X_test_scaled %>% mutate_if(is.character,function(x) as.integer(factor(x)))
+```
+
+## PCR
+```{r}
+library(pls)
+set.seed(42)
+
+# combine y_train and X_train_scaled
+train_scaled <- X_train_scaled
+train_scaled['SalePrice'] <- y_train
+
+# combine y_test and X_test_scaled
+test_scaled <- X_test_scaled
+test_scaled['SalePrice'] <- y_test
+
+# fit principal component analysis regression
+pcr.fit <- pcr(SalePrice ~ .,data = train_scaled,validation = "CV")
+
+# plot RMSE vs number of components
+validationplot(pcr.fit, val.type = "RMSEP",
+               legendpos='topright',
+               main = 'Number of Principal Components needed to minimise RMSE to
+Predict Sale Price')
+
+# plot of Rsquared vs number of components
+validationplot(pcr.fit, val.type = "R2",
+               legendpos='topright',
+               main = 'Principal Components needed to maximise R-squared to
+Predict Sale Price')
+```
+
+From the validation plot, we observe that the number of components with the lowest cross-validation error is in the range of 21 to 40 components. Therefore, we will test ncomps in [21,40] to see which principal component regression model performs best on our test set.
+
+```{r}
+ncomps = seq(1:20) + 20
+ncomp_score <- c()
+for (n in ncomps){
+  pcr.pred <- predict(pcr.fit, X_test_scaled, ncomp = n)
+  ncomp_score <- c(ncomp_score,sqrt(mean((pcr.pred-y_test)^2)))
+}
+
+# table of ncomps and respective test scores
+data.frame(ncomps,ncomp_score)
+```
+
+This table shows that ncomps = 31 performs the best with an RMSE of $28,141.38$. This performance will later be compared against the rest of the regressions.
+
+## Ridge
+### Removing linearly dependent variables
+Before moving onto any of the other regressions, we're going to eliminate the linearly dependent variables from our data. We didn't confront this problem earlier because principal component analysis naturally eliminates multicollinearity.
+
+```{r}
+library(car)
+# find linearly dependent variables
+fit <- lm(SalePrice~.,data = train_scaled)
+ld_vars <- attributes(alias(fit)$Complete)$dimnames[[1]]
+cat('Linearly dependent variables:',ld_vars)
+
+# eliminate linearly dep variables
+train_scaled_reg <- train_scaled[,-which(names(train_scaled) %in% ld_vars)]
+test_scaled_reg <- test_scaled[,-which(names(test_scaled) %in% ld_vars)]
+
+# find variables with VIF > 5
+fit <- lm(SalePrice~. ,data = train_scaled_reg)
+cat("Variables with VIF > 5:",names(vif(fit)[vif(fit) > 5]))
+
+# eliminate variables with VIF > 5
+train_scaled_reg <- train_scaled_reg[,-which(names(train_scaled_reg) %in% names(vif(fit)[vif(fit) > 5]))]
+
+test_scaled_reg <-test_scaled_reg[,-which(names(test_scaled_reg) %in% names(vif(fit)[vif(fit) > 5]))]
+```
+
+The ridge model is a useful model to consider in modeling Sale Price because our feature space has 63 variables, and the the L2 regularization penalty, $\lambda \sum^{63}_{i = 1} \beta_i^2$, can help reduce the coefficients of less important variables in our data set to near-zero values.
+```{r}
+library(glmnet)
+library(Matrix)
+model_ridge = cv.glmnet(x = as.matrix(train_scaled_reg[,-which(names(train_scaled_reg) %in% c("SalePrice"))]), y=train_scaled_reg$SalePrice, alpha = 0)
+plot(model_ridge$glmnet.fit, "lambda", label=TRUE)
+```
+
+This plot shows how increasing the size of lambda affects the coefficients of different variables. We observe that our 4th, 14th, 45th, 23rd, 36th, 37th, and 26th variables are highly important, while the other variables are less so. 
+
+Now let's take a closer look at our important variables by creating a variable importance plot.
+
+```{r}
+library(vip)
+vip(model_ridge, num_features = 30, geom = "point")
+```
+
+This shows us that our street variable (which is the type of street the property is on) is the most important variable by far, then exterior quality, overall quality, and kitchen quality are the next most important variables. On a qualitative level, this makes sense because most people evaluate real-estate from the outside first, then the inside. Kitchen quality is unsurprising because many people spend a lot of time in their kitchens, either eating food or preparing food. Finally, on the less important side of the 30 variables, we see heating, basement condition, and so forth, which is also expected -- at least in Australia, where it's generally quite warm, and because the basement aesthetics are less noticeable.
+
+```{r}
+# we can utilize cross validation to train our ridge model 
+# and find the best lambda
+train_control <- trainControl(method = "repeatedcv",
+                              number = 5,
+                              repeats = 1,
+                              search = "random",
+                              verboseIter = FALSE)
+
+ridge_model 	<- train(SalePrice ~ .,
+                       data = train_scaled_reg,
+                       metrics = 'RMSE',
+                       method = "ridge",
+                       tuneLength = 25,
+                       trControl = train_control)
+
+# Predict using the testing data
+ridge_preds = predict(ridge_model, newdata = X_test_scaled)
+
+# Evaluate performance
+postResample(pred = ridge_preds, obs = y_test)
+```
+
+This shows us that our ridge model's best cross-validated performance is $33,211.91$, which is worse than our PCR model (by roughly $4,000$). The Rsquared is $0.8071006$.
+
+
+## LASSO
+
+We will now try a LASSO model to regularize our data. The LASSO model works similarly to Ridge, except by using a different penalty term that takes the absolute value of $\beta$, which results inthe coefficients of less important variables can be reduced to exactly 0 (not just near-zero as in our Ridge Model). Thus, by using the penalty term $\lambda \sum^{p}_{i = 1} \lvert \beta_i \rvert$, our LASSO model will have high predictive power and be simple to interpret.
+
+```{r}
+# Perform 10-fold cross-validation to select lambda 
+lambdas_to_try <- 10^seq(-3, 5, length.out = 100)
+
+# Setting alpha = 1 implements lasso regression
+lasso_cv <- cv.glmnet(x = as.matrix(train_scaled_reg[,-which(names(train_scaled_reg) %in% c("SalePrice"))]), y=train_scaled_reg$SalePrice, alpha = 1, lambda = lambdas_to_try,
+                      standardize = TRUE, nfolds = 10)
+# Plot cross-validation results
+plot(lasso_cv)
+
+# Best cross-validated lambda
+lambda_cv <- lasso_cv$lambda.min
+
+# Fit final model
+model_lasso <- glmnet(x = as.matrix(train_scaled_reg[,-which(names(train_scaled_reg) %in% c("SalePrice"))]), y=train_scaled_reg$SalePrice, alpha = 1, lambda = lambda_cv, standardize = TRUE)
+
+#Compare variables across lambdas
+plot(lasso_cv$glmnet.fit, "lambda", label=TRUE)
+```
+
+As with the Ridge Model, this plot shows how the coefficients of different variables react to increasing lambda. From this plot we find the 14th, 23rd, 43rd, 30th, 45th, and 22nd variables are highly important, while other variables are less so.  
+
+We will now create a variable importance plot to closer examine these important variables.
+
+```{r}
+library(vip)
+vip(model_lasso, num_features = 30, geom = "point")
+```
+
+This shows us that Overall Quality is the most important variable and Street is the second most important and both of these variables are far more important than the rest. While our Ridge Model had Street as the most important variable and Overall Quality at second, both our Ridge Model and Lasso Model agree on the top two most important variables. Our Lasso Model then shows that Roof Material, External Quality, Kitchen Quality, and Full Bathrooms are the next most important variables. Our Ridge Model resulted in the same aside from Central Air replacing Full Bathrooms. On the other end, both our Lasso and our Ridge Models agree that heating is not that important of a variable. 
+
+We will now train our Lasso Model and predict our test set to measure RMSE:
+
+```{r}
+# we can utilize cross validation to train our lasso model 
+# and find the best lambda
+train_control <- trainControl(method = "repeatedcv",
+                              number = 5,
+                              repeats = 5,
+                              search = "random",
+                              verboseIter = FALSE)
+
+lasso_model 	<- train(SalePrice ~ .,
+                       data = train_scaled_reg,
+                       metrics = 'RMSE',
+                       method = "glmnet",
+                       tuneGrid = expand.grid(alpha = 1, 
+                                              lambda = 1),
+                       tuneLength = 25,
+                       trControl = train_control)
+
+# Predict using the testing data
+lasso_preds = predict(lasso_model, newdata = X_test_scaled)
+
+# Evaluate performance
+postResample(pred = lasso_preds, obs = y_test)
+```
+This shows us that our LASSO model's best cross-validated performance is $33,128.05$, which is worse than our PCR model (by roughly $4,000$). The Rsquared is $0.806975$.
+
+## Elastic Net
+
+We will now try an Elastic Net model to regularize our data. Elastic Net improves upon Ridge and Lasso by combining the penalties from each model resulting in a shrinkage model less dependent on the data. The new penalty term is $\frac{1-\alpha}2 \sum^{p}_{i = 1} \beta_i^2 + \alpha \sum^{p}_{i = 1} \lvert \beta_i \rvert$ where $\alpha=0$ (Ridge) % $\alpha=1$ (Lasso).
+
+```{r}
+#use cross validation to train our elastic net model
+train_control <- trainControl(method = "repeatedcv",
+                              number = 5,
+                              repeats = 5,
+                              search = "random",
+                              verboseIter = TRUE)
+
+# Train the model
+elastic_net_model <- train(SalePrice ~ .,
+                           data = train_scaled_reg,
+                           metrics = 'RMSE',
+                           method = "glmnet",
+                           preProcess = c("center", "scale"),
+                           tuneLength = 25,
+                           trControl = train_control)
+```
+
+Our cross validation results in the tuning parameters $\alpha=0.001489799$ and $\lambda=0.007510219$ for our Elastic Net Model. We will now predict the testing data in order to measure the RMSE of our model.
+
+We will now look at the variables our E-Net model finds the most important:
+
+```{r}
+print(elastic_net_model)
+elastic_net_model$bestTune
+plot(elastic_net_model$finalModel, "lambda", label=TRUE)
+```
+
+This plot again shows how the coefficients of different variables react to increasing lambda. This plot demonstrates that the 14th, 39th, 43rd, 23rd, 22nd, 46th, and 26th are highly important, while other variables are less so. 
+
+We will now create a variable importance plot to closer examine these important variables.
+
+```{r}
+vip(elastic_net_model, num_features = 30, geom = "point")
+```
+
+Our Elastic Net Model shows that Overall Quality is the most important variable by far, then followed by Full Bathrooms, Kitchen Quality, and External Quality - which is in agreement with our Ridge and Lasso models aside from the Street variable.
+
+We will now use our elastic net model fit on the full training set to predict the test set in order to measure RMSE and R-squared.
+
+```{r}
+# Predict using the testing data
+enet_preds = predict(elastic_net_model, newdata = X_test_scaled)
+
+# Evaluate performance
+postResample(enet_preds,y_test)
+```
+
+This shows us that our Elastic Net Model's best cross-validated performance is $33,115.49$ which is almost $4,000$ higher than our Ridge model's performance.
+
+
+## Model Comparison
+
+Comparing the RMSEs from predicting the test set Sale Price using our four regularization models, we find our principal component regression model performed best with the lowest RMSE of $28,141.38$. 
+
+RMSE Comparison: 
+PCR:   $28,141.38$
+Ridge: $33,211.91$
+Lasso: $33,128.05$
+E-Net: $33,115.49$
+
+This PCR model found that the number of components with the lowest cross-validation error was ncomps = 31. Thus our final regularization model is a PCR model with ncomps = 31:
+
+```{r}
+#Final PCR fit 
+pcr.fit.final <- pcr(SalePrice ~., data = train_scaled, ncomp = 31)
+summary(pcr.fit.final)
+
+#Predicting Sale Price
+pcr.pred.final <- predict(pcr.fit.final, X_test_scaled, ncomp = 31)
+```
+
+This PCR model reduced dimensionality from 73 variables down to 31 components and outperformed Ridge, Lasso, and Elastic Net regularization methods making it our model of choice. 
+
+
+# Sources
+
+https://remiller1450.github.io/s230f19/caret3.html
+https://dataaspirant.com/knn-implementation-r-using-caret-package/
+https://www.rdocumentation.org/packages/caret/versions/4.47/topics/train
+
+
